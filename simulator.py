@@ -3,10 +3,10 @@ import json
 import logging
 import random
 import sys
-import time
 import uuid
+from contextlib import asynccontextmanager
 
-from aiohttp import web
+from fastapi import FastAPI, Response
 from prometheus_client import CONTENT_TYPE_LATEST, Counter, Histogram, generate_latest
 
 logging.basicConfig(level=logging.INFO, format="%(message)s", stream=sys.stdout)
@@ -73,19 +73,6 @@ async def simulate_request() -> dict:
     return event
 
 
-async def handle_complete(request: web.Request) -> web.Response:
-    result = await simulate_request()
-    status_code = 200 if result["status"] == "success" else (429 if result.get("error_type") == "rate_limit" else 500)
-    return web.json_response(result, status=status_code)
-
-
-async def handle_metrics(request: web.Request) -> web.Response:
-    # aiohttp не принимает charset внутри content_type — CONTENT_TYPE_LATEST
-    # содержит "text/plain; version=0.0.4; charset=utf-8", разбираем отдельно
-    content_type = CONTENT_TYPE_LATEST.split(";")[0].strip()
-    return web.Response(body=generate_latest(), content_type=content_type, charset="utf-8")
-
-
 async def traffic_generator():
     """Фоновая задача — имитирует постоянный поток запросов к API от разных клиентов."""
     while True:
@@ -105,18 +92,26 @@ async def incident_scheduler():
         _log({"event": "incident_resolved"})
 
 
-async def on_startup(app: web.Application):
-    app["traffic_task"] = asyncio.create_task(traffic_generator())
-    app["incident_task"] = asyncio.create_task(incident_scheduler())
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    traffic_task = asyncio.create_task(traffic_generator())
+    incident_task = asyncio.create_task(incident_scheduler())
+    yield
+    traffic_task.cancel()
+    incident_task.cancel()
 
 
-def create_app() -> web.Application:
-    app = web.Application()
-    app.router.add_post("/v1/complete", handle_complete)
-    app.router.add_get("/metrics", handle_metrics)
-    app.on_startup.append(on_startup)
-    return app
+app = FastAPI(lifespan=lifespan)
 
 
-if __name__ == "__main__":
-    web.run_app(create_app(), host="0.0.0.0", port=8000)
+@app.post("/v1/complete")
+async def complete():
+    result = await simulate_request()
+    status_code = 200 if result["status"] == "success" else (429 if result.get("error_type") == "rate_limit" else 500)
+    return Response(content=json.dumps(result), status_code=status_code, media_type="application/json")
+
+
+@app.get("/metrics")
+async def metrics():
+    content_type = CONTENT_TYPE_LATEST.split(";")[0].strip()
+    return Response(content=generate_latest(), media_type=content_type)

@@ -6,7 +6,7 @@
 ## Модули
 | Модуль | Файл | Описание |
 |--------|------|----------|
-| Симулятор LLM API | simulator.py | aiohttp-сервис с эндпоинтом `/v1/complete`, генератор фонового трафика, периодические имитации инцидентов, структурированные JSON-логи, эндпоинт `/metrics` для Prometheus |
+| Симулятор LLM API | simulator.py | FastAPI-сервис с эндпоинтом `/v1/complete`, генератор фонового трафика, периодические имитации инцидентов, структурированные JSON-логи, эндпоинт `/metrics` для Prometheus |
 | Сбор метрик | prometheus/prometheus.yml | Конфиг Prometheus — scrape симулятора раз в 5 секунд |
 | Визуализация | grafana/dashboards/llm-api-dashboard.json | Дашборд: RPS, error rate %, латентность p50/p95/p99, разбивка ошибок по типу |
 | Оркестрация | docker-compose.yml | simulator + prometheus + grafana, готово к `docker-compose up` |
